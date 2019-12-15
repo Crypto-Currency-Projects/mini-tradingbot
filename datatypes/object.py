@@ -1,13 +1,14 @@
 from constant import (
     OrderType,
-Side,
-Symbol,
-TimeInForce,
-TriggerPriceType,
-OrderStatus,
+    Side,
+    Symbol,
+    TimeInForce,
+    TriggerPriceType,
+    OrderStatus,
 )
 
 ACTIVE_STATUSES = set([OrderStatus.NEW, OrderStatus.CREATED, OrderStatus.PARTIALLY_FILLED])
+
 
 class TickData():
     """
@@ -71,26 +72,30 @@ class PositionData:
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
         self.vt_positionid = f"{self.vt_symbol}.{self.direction.value}"
 
-class OrderData():
+
+class OrderData:
     """
     Order data contains information for tracking lastest status
     of a specific order.
     """
 
-    symbol: str
-    orderid: str
-
-    type: OrderType = OrderType.LIMIT
-    direction: Side = ""
-    price: float = 0
-    volume: float = 0
     status: OrderStatus = OrderStatus.DEFAULT
     time: str = ""
 
-    def __post_init__(self):
-        """"""
-        self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
-        self.vt_orderid = f"{self.gateway_name}.{self.orderid}"
+    def __init__(self,
+                 symbol: Symbol,
+                 order_link_id: str,
+                 order_type: OrderType,
+                 price: float,
+                 size: int,
+                 time_in_force: TimeInForce
+                 ):
+        self.symbol = symbol
+        self.order_link_id = order_link_id
+        self.type = order_type
+        self.price = price
+        self.size = size
+        self.time_in_force = time_in_force
 
     def is_active(self):
         """
@@ -106,3 +111,44 @@ class OrderData():
         Create cancel request object from order.
         """
         pass
+
+
+class OrderRequest:
+    """
+    Request sending to specific gateway for creating a new order.
+    """
+    def __init__(self,
+                 symbol: Symbol,
+                 order_link_id: str,
+                 order_type: OrderType,
+                 price: float,
+                 size: int
+                 ):
+        self.symbol = symbol
+        self.order_link_id = order_link_id
+        self.type = order_type
+        self.price = price
+        self.size = size
+
+    def create_order_data(self, orderid: str, gateway_name: str):
+        """
+        Create order data from request.
+        """
+        order = OrderData(
+            symbol=self.symbol,
+            order_link_id=orderid,
+            order_type=self.type,
+            side=self.side,
+            price=self.price,
+            size=self.size,
+        )
+        return order
+
+
+class CancelReq:
+    """
+    Request sending to specific gateway for canceling an existing order.
+    """
+    order_id: str
+    order_link_id: str
+    symbol: Symbol

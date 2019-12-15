@@ -54,8 +54,6 @@ class BybitWebsocketApi(WebsocketClient):
         """"""
         self.key = key
         self.secret = secret.encode()
-        self.proxy_host = proxy_host
-        self.proxy_port = proxy_port
         self.server = server
 
         if self.server == "REAL":

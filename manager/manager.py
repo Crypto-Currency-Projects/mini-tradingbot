@@ -1,4 +1,7 @@
 from gateway import BybitGateway
+from copy import copy
+from datatypes import OrderData, CancelReq
+
 
 class LocalOrderManager:
     """
@@ -12,7 +15,7 @@ class LocalOrderManager:
         # For generating local orderid
         self.order_prefix = order_prefix
         self.order_count = 0
-        self.orders = {}        # local_orderid:order
+        self.orders = {}  # local_orderid:order
 
         # Map between local and system orderid
         self.local_sys_orderid_map = {}
@@ -25,7 +28,7 @@ class LocalOrderManager:
         self.push_data_callback = None
 
         # Cancel request buf
-        self.cancel_request_buf = {}    # local_orderid:req
+        self.cancel_request_buf = {}  # local_orderid:req
 
         # Hook cancel order function
         self._cancel_order = gateway.cancel_order
@@ -105,7 +108,7 @@ class LocalOrderManager:
         self.orders[order.orderid] = copy(order)
         self.gateway.on_order(order)
 
-    def cancel_order(self, req: CancelRequest):
+    def cancel_order(self, req: CancelReq):
         """
         """
         sys_orderid = self.get_sys_orderid(req.orderid)
