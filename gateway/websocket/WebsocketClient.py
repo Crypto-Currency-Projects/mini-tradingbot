@@ -8,8 +8,7 @@ from datetime import datetime
 from threading import Lock, Thread
 from time import sleep
 from typing import Optional, Dict
-
-from gateway import websocket
+from gateway import websocket, BybitGateway
 
 file_handlers: Dict[str, logging.FileHandler] = {}
 log_formatter = logging.Formatter('[%(asctime)s] %(message)s')
@@ -58,8 +57,9 @@ class WebsocketClient(object):
     If you want to send anything other than JSON, override send_packet.
     """
 
-    def __init__(self):
+    def __init__(self, gateway: BybitGateway):
         """Constructor"""
+        self.gateway = gateway
         self.host = None
 
         self._ws_lock = Lock()

@@ -1,3 +1,5 @@
+import time
+
 from constant import (
     OrderType,
     Side,
@@ -10,7 +12,7 @@ from constant import (
 ACTIVE_STATUSES = set([OrderStatus.NEW, OrderStatus.CREATED, OrderStatus.PARTIALLY_FILLED])
 
 
-class TickData():
+class TickData:
     """
     Tick data contains information about:
         * last trade in market
@@ -80,7 +82,9 @@ class OrderData:
     """
 
     status: OrderStatus = OrderStatus.DEFAULT
-    time: str = ""
+    leaves_qty: int
+    cum_exec_qty: int
+    update_time: float
 
     def __init__(self,
                  symbol: Symbol,
@@ -88,14 +92,18 @@ class OrderData:
                  order_type: OrderType,
                  price: float,
                  size: int,
-                 time_in_force: TimeInForce
+                 side: str,
+                 time_in_force: TimeInForce,
+                 update_time: float,
                  ):
         self.symbol = symbol
         self.order_link_id = order_link_id
         self.type = order_type
         self.price = price
         self.size = size
+        self.side = side
         self.time_in_force = time_in_force
+        self.update_time = update_time
 
     def is_active(self):
         """
@@ -117,30 +125,37 @@ class OrderRequest:
     """
     Request sending to specific gateway for creating a new order.
     """
+
     def __init__(self,
                  symbol: Symbol,
                  order_link_id: str,
                  order_type: OrderType,
                  price: float,
-                 size: int
+                 size: int,
+                 side: str,
+                 time_in_force: TimeInForce,
                  ):
         self.symbol = symbol
         self.order_link_id = order_link_id
         self.type = order_type
         self.price = price
         self.size = size
+        self.side = side
+        self.time_in_force = time_in_force
 
-    def create_order_data(self, orderid: str, gateway_name: str):
+    def create_order_data(self, order_link_id: str):
         """
         Create order data from request.
         """
         order = OrderData(
             symbol=self.symbol,
-            order_link_id=orderid,
+            order_link_id=order_link_id,
             order_type=self.type,
             side=self.side,
             price=self.price,
             size=self.size,
+            update_time=time.time(),
+            time_in_force=self.time_in_force,
         )
         return order
 
@@ -149,6 +164,12 @@ class CancelReq:
     """
     Request sending to specific gateway for canceling an existing order.
     """
-    order_id: str
-    order_link_id: str
-    symbol: Symbol
+
+    def __init__(self,
+                 order_id: str,
+                 order_link_id: str,
+                 symbol: Symbol,
+                 ):
+        self.order_id = order_id
+        self.order_link_id = order_link_id
+        self.symbol = symbol
