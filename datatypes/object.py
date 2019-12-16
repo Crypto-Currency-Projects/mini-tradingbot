@@ -160,7 +160,7 @@ class OrderRequest:
         return order
 
 
-class CancelReq:
+class CancelRequest:
     """
     Request sending to specific gateway for canceling an existing order.
     """
