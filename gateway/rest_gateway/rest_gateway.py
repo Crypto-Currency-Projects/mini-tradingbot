@@ -4,6 +4,9 @@ from typing import Any, Callable, List, Optional, Type, Union
 from types import TracebackType
 from multiprocessing import Pool
 from enum import Enum
+from datetime import datetime
+from log import get_file_logger
+import logging
 import multiprocessing
 import os
 import time
@@ -25,6 +28,9 @@ CALLBACK_TYPE = Callable[[dict, "Request"], Any]
 ON_FAILED_TYPE = Callable[[int, "Request"], Any]
 ON_ERROR_TYPE = Callable[[Type, Exception, TracebackType, "Request"], Any]
 CONNECTED_TYPE = Callable[["Request"], Any]
+
+REST_HOST = "https://api.bybit.com"
+TESTNET_REST_HOST = "https://api-testnet.bybit.com"
 
 
 class Request:
@@ -102,13 +108,17 @@ class BybitRestApi():
     def __init__(self, gateway: BybitGateway):
         """"""
         self.order_manager = gateway.order_manager
+        self.logger: Optional[logging.Logger] = None
 
+        self.url_base: str = ""
         self.key = ""
         self.secret = b""
 
         self.order_count = 1_000_000
         self.order_count_lock = Lock()
         self.connect_time = 0
+
+        self._active: bool = False
 
     def sign(self, request: Request):
         """
@@ -135,6 +145,60 @@ class BybitRestApi():
         api_params["sign"] = signature
 
         return request
+
+    def init(self,
+             url_base: str,
+             log_path: Optional[str] = None,
+             ):
+        """
+        Init rest client with url_base which is the API root address.
+        e.g. 'https://www.bitmex.com/api/v1/'
+        :param url_base:
+        :param log_path: optional. file to save log.
+        """
+        self.url_base = url_base
+
+        if log_path is not None:
+            self.logger = get_file_logger(log_path)
+            self.logger.setLevel(logging.DEBUG)
+
+    def connect(
+            self,
+            key: str,
+            secret: str,
+            server: str,
+            proxy_host: str,
+            proxy_port: int,
+    ):
+        """
+        Initialize connection to REST server.
+        """
+        self.key = key
+        self.secret = secret.encode()
+
+        self.connect_time = (
+                int(datetime.now().strftime("%y%m%d%H%M%S")) * self.order_count
+        )
+
+        if server == "REAL":
+            self.init(REST_HOST)
+        else:
+            self.init(TESTNET_REST_HOST)
+
+        self.start(3)
+        self.write_log("REST API启动成功")
+
+        self.query_contract()
+        self.query_order()
+        self.query_position()
+
+    def start(self, n: int = 3):
+        """
+        Start rest client with session count n.
+        """
+        if self._active:
+            return
+        self._active = True
 
 
 def generate_timestamp(expire_after: float = 30) -> int:

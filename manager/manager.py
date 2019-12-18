@@ -1,6 +1,6 @@
 from gateway import BybitGateway
 from copy import copy
-from datatypes import OrderData, CancelReq
+from datatypes import OrderData, CancelRequest
 import uuid
 
 
@@ -113,7 +113,7 @@ class LocalOrderManager:
         self.orders[order.order_link_id] = copy(order)
         self.gateway.on_order(order)
 
-    def cancel_order(self, req: CancelReq):
+    def cancel_order(self, req: CancelRequest):
         """
         """
         order_link_id = self.get_sys_orderid(req.order_link_id)

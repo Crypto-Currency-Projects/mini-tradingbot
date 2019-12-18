@@ -39,3 +39,12 @@ class BybitGateway(object):
     def cancel_order(self, req: CancelRequest):
         """"""
         self.rest_api.cancel_order(req)
+
+    def query_position(self):
+        """"""
+        self.rest_api.query_position()
+
+    def close(self):
+        """"""
+        self.rest_api.stop()
+        self.ws_api.stop()
