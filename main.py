@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any, Dict, Callable
 from copy import copy
 
-from gateway.websocket import WebsocketClient
+from src.bybit_gateway import WebsocketClient
 
 
 REST_HOST = "https://api.bybit.com"
@@ -230,7 +230,7 @@ class BybitWebsocketApi(WebsocketClient):
 
 
 
-        # self.gateway.on_trade(trade)
+        # self.bybit_gateway.on_trade(trade)
 
     def on_order(self, packet: dict):
         """"""

@@ -25,7 +25,7 @@ class LogFilter(logging.Filter):
             return 0
 
 
-def _get_filename(*, basename='app.log', log_level='info'):
+def _get_filename(*, basename='app.logger', log_level='info'):
     date_str = datetime.today().strftime('%Y%m%d')
     pidstr = str(os.getpid())
     return ''.join((

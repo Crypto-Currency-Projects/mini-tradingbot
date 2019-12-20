@@ -1,4 +1,4 @@
-from datatypes import TickData
+from src.datatypes import TickData
 
 
 class Strategy:

@@ -1,19 +1,27 @@
-from gateway import BybitGateway
-from threading import Lock
-from typing import Any, Callable, List, Optional, Type, Union
+from src.datatypes import TickData, Symbol, OrderRequest, CancelRequest
+from src.strategy import Strategy
+from src.manager import LocalOrderManager
+from typing import Any, Callable, Optional, Type, Union
 from types import TracebackType
 from multiprocessing import Pool
 from enum import Enum
-from datetime import datetime
-from log import get_file_logger
-import logging
+from src.logger import LogFactory
 import multiprocessing
 import os
 import time
-import hashlib
-import hmac
 import requests
-
+import json
+import logging
+import socket
+import ssl
+import sys
+import hmac
+import hashlib
+import traceback
+from datetime import datetime
+from threading import Lock, Thread
+from time import sleep
+from typing import Optional
 
 class RequestStatus(Enum):
     ready = 0  # Request created
@@ -31,6 +39,50 @@ CONNECTED_TYPE = Callable[["Request"], Any]
 
 REST_HOST = "https://api.bybit.com"
 TESTNET_REST_HOST = "https://api-testnet.bybit.com"
+
+
+class BybitGateway(object):
+    def __init__(self):
+        self.order_manager = LocalOrderManager(self, str(time.time()))
+        self.rest_api = BybitRestApi(self)
+        self.ws_api = WebsocketClient(self)
+        self.strategy_map = {}
+
+    def connect(self, setting: dict):
+        """"""
+        key = setting["ID"]
+        secret = setting["Secret"]
+        server = setting["服务器"]
+
+        self.rest_api.connect(key, secret, server)
+        self.ws_api.connect(key, secret, server)
+
+    def register_strategy(self, symbol: Symbol, strategy: Strategy):
+        self.strategy_map[symbol] = strategy
+
+    def on_tick(self, tick: TickData):
+        """
+        Tick data.
+        """
+        for s in self.strategy_map[tick.symbol]:
+            s.on_tick(tick)
+
+    def send_order(self, req: OrderRequest):
+        """"""
+        return self.rest_api.send_order(req)
+
+    def cancel_order(self, req: CancelRequest):
+        """"""
+        self.rest_api.cancel_order(req)
+
+    def query_position(self):
+        """"""
+        self.rest_api.query_position()
+
+    def close(self):
+        """"""
+        self.rest_api.stop()
+        self.ws_api.stop()
 
 
 class Request:
@@ -104,10 +156,10 @@ class Request:
         )
 
 
-class BybitRestApi():
-    def __init__(self, gateway: BybitGateway):
+class BybitRestApi:
+    def __init__(self, order_manager: LocalOrderManager):
         """"""
-        self.order_manager = gateway.order_manager
+        self.order_manager = order_manager
         self.logger: Optional[logging.Logger] = None
 
         self.url_base: str = ""
@@ -154,12 +206,12 @@ class BybitRestApi():
         Init rest client with url_base which is the API root address.
         e.g. 'https://www.bitmex.com/api/v1/'
         :param url_base:
-        :param log_path: optional. file to save log.
+        :param log_path: optional. file to save logger.
         """
         self.url_base = url_base
 
         if log_path is not None:
-            self.logger = get_file_logger(log_path)
+            self.logger = LogFactory.get_file_logger(log_path)
             self.logger.setLevel(logging.DEBUG)
 
     def connect(
@@ -167,8 +219,6 @@ class BybitRestApi():
             key: str,
             secret: str,
             server: str,
-            proxy_host: str,
-            proxy_port: int,
     ):
         """
         Initialize connection to REST server.
@@ -186,11 +236,11 @@ class BybitRestApi():
             self.init(TESTNET_REST_HOST)
 
         self.start(3)
-        self.write_log("REST API启动成功")
+        self.logger.info("REST API启动成功")
 
-        self.query_contract()
-        self.query_order()
-        self.query_position()
+        # self.query_contract()
+        # self.query_order()
+        # self.query_position()
 
     def start(self, n: int = 3):
         """
@@ -199,6 +249,66 @@ class BybitRestApi():
         if self._active:
             return
         self._active = True
+
+
+class WebsocketClient(object):
+    """
+    Websocket API
+
+    After creating the client object, use start() to run worker and ping threads.
+    The worker thread connects websocket automatically.
+
+    Use stop to stp threads and disconnect websocket before destroying the client
+    object (especially when exiting the programme).
+
+    Default serialization format is json.
+
+    Callbacks to overrides:
+    * unpack_data
+    * on_connected
+    * on_disconnected
+    * on_packet
+    * on_error
+
+    After start() is called, the ping thread will ping server every 60 seconds.
+
+    If you want to send anything other than JSON, override send_packet.
+    """
+
+    def __init__(self, gateway: BybitGateway):
+        """Constructor"""
+        self.gateway = gateway
+        self.host = None
+
+        self._ws_lock = Lock()
+        self._ws = None
+
+        self._worker_thread = None
+        self._ping_thread = None
+        self._active = False
+
+        self.ping_interval = 60  # seconds
+        self.header = {}
+
+        self.logger: Optional[logging.Logger] = None
+
+        # For debugging
+        self._last_sent_text = None
+        self._last_received_text = None
+
+    def init(self, host: str, ping_interval: int = 60, log_path: Optional[str] = None,
+             ):
+        """
+        :param host:
+        :param ping_interval: unit: seconds, type: int
+        :param log_path: optional. file to save logger.
+        """
+        self.host = host
+        self.ping_interval = ping_interval  # seconds
+        if log_path is not None:
+            self.logger = LogFactory.get_file_logger(log_path)
+            self.logger.setLevel(logging.DEBUG)
+
 
 
 def generate_timestamp(expire_after: float = 30) -> int:

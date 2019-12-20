@@ -7,8 +7,8 @@ import traceback
 from datetime import datetime
 from threading import Lock, Thread
 from time import sleep
-from typing import Optional, Dict
-from gateway import websocket, BybitGateway
+from typing import Optional
+from src.bybit_gateway import websocket, BybitGateway
 
 
 class WebsocketClient(object):
@@ -61,7 +61,7 @@ class WebsocketClient(object):
         """
         :param host:
         :param ping_interval: unit: seconds, type: int
-        :param log_path: optional. file to save log.
+        :param log_path: optional. file to save logger.
         """
         self.host = host
         self.ping_interval = ping_interval  # seconds

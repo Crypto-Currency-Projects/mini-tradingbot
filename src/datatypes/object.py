@@ -1,11 +1,9 @@
 import time
 
-from constant import (
+from src.constant import (
     OrderType,
-    Side,
     Symbol,
     TimeInForce,
-    TriggerPriceType,
     OrderStatus,
 )
 
@@ -123,7 +121,7 @@ class OrderData:
 
 class OrderRequest:
     """
-    Request sending to specific gateway for creating a new order.
+    Request sending to specific bybit_gateway for creating a new order.
     """
 
     def __init__(self,
@@ -162,7 +160,7 @@ class OrderRequest:
 
 class CancelRequest:
     """
-    Request sending to specific gateway for canceling an existing order.
+    Request sending to specific bybit_gateway for canceling an existing order.
     """
 
     def __init__(self,
