@@ -25,7 +25,7 @@ class LogFilter(logging.Filter):
             return 0
 
 
-def _get_filename(*, basename='app.logger', log_level='info'):
+def _get_filename(*, basename='app.log', log_level='info'):
     date_str = datetime.today().strftime('%Y%m%d')
     pidstr = str(os.getpid())
     return ''.join((
@@ -75,7 +75,7 @@ class LogFactory:
                 'backupCount': _BACKUP_COUNT,
                 'formatter': 'dev',
                 'delay': True,
-                'filters': ['info_filter', ]  # only INFO, no ERROR
+                # 'filters': ['info_filter', ]  # only INFO, no ERROR
             },
             'file_error': {
                 'level': 'ERROR',
