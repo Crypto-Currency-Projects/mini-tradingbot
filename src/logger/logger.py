@@ -67,7 +67,7 @@ class LogFactory:
             },
 
             'file': {
-                'level': 'INFO',
+                # 'level': 'DEBUG',
                 'class': 'logging.handlers.RotatingFileHandler',
                 'filename': _get_filename(log_level='info'),
                 'maxBytes': _SINGLE_FILE_MAX_BYTES,
@@ -94,6 +94,14 @@ class LogFactory:
             'SAMPLE_LOGGER': {
                 'handlers': ['console', 'file', 'file_error'],
                 'level': 'INFO'
+            },
+            'ERROR_LOGGER': {
+                'handlers': ['console', 'file', 'file_error'],
+                'level': 'ERROR'
+            },
+            'DEBUG_LOGGER': {
+                'handlers': ['console', 'file', 'file_error'],
+                'level': 'DEBUG'
             },
         },
     }

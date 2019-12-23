@@ -1,6 +1,6 @@
 from src.datatypes import TickData, Symbol, OrderRequest, CancelRequest
 from src.strategy import Strategy
-from typing import Any, Callable, Optional, Type, Union
+from typing import Any, Callable, Optional, Type, Union, List
 from types import TracebackType
 from multiprocessing import Pool
 from enum import Enum
@@ -25,6 +25,7 @@ from typing import Optional
 from copy import copy
 from src.datatypes import OrderData, CancelRequest
 import uuid
+
 
 class RequestStatus(Enum):
     ready = 0  # Request created
@@ -102,7 +103,7 @@ class Request:
             stream: bool = False,
             on_connected: CONNECTED_TYPE = None,  # for streaming request
             extra: Any = None,
-            client: "RestClient" = None,
+            client=None,
     ):
         """"""
         self.method = method
@@ -122,7 +123,7 @@ class Request:
 
         self.response: Optional[requests.Response] = None
         self.status = RequestStatus.ready
-        self.client: "RestClient" = client
+        self.client = client
 
     def __str__(self):
         if self.response is None:
@@ -164,7 +165,7 @@ class BybitRestApi:
         """"""
         self.gateway = gateway
         self.order_manager = gateway.order_manager
-        self.logger = LogFactory.get_file_logger("rest_api.log")
+        self.logger = LogFactory.get_logger("SAMPLE_LOGGER")
 
         self.url_base: str = ""
         self.key = ""
@@ -175,6 +176,14 @@ class BybitRestApi:
         self.connect_time = 0
 
         self._active: bool = False
+
+        self._tasks_lock = Lock()
+        self._tasks: List[multiprocessing.pool.AsyncResult] = []
+        self._sessions_lock = Lock()
+        self._sessions: List[requests.Session] = []
+
+        self._streams_lock = Lock()
+        self._streams: List[Thread] = []
 
     def sign(self, request: Request):
         """
@@ -202,21 +211,6 @@ class BybitRestApi:
 
         return request
 
-    def init(self,
-             url_base: str,
-             log_path: Optional[str] = None,
-             ):
-        """
-        Init rest client with url_base which is the API root address.
-        :param url_base:
-        :param log_path: optional. file to save logger.
-        """
-        self.url_base = url_base
-
-        if log_path is not None:
-            self.logger = LogFactory.get_file_logger(log_path)
-            self.logger.setLevel(logging.DEBUG)
-
     def connect(
             self,
             key: str,
@@ -234,14 +228,14 @@ class BybitRestApi:
         )
 
         if server == "REAL":
-            self.init(REST_HOST)
+            self.url_base = REST_HOST
         else:
-            self.init(TESTNET_REST_HOST)
+            self.url_base = TESTNET_REST_HOST
 
         self.start(3)
         self.logger.info("REST API启动成功")
 
-        # self.query_contract()
+        self.query_contract()
         # self.query_order()
         # self.query_position()
 
@@ -252,6 +246,165 @@ class BybitRestApi:
         if self._active:
             return
         self._active = True
+
+    def query_contract(self):
+        """"""
+        self.add_request(
+            "GET",
+            "/v2/public/symbols",
+            self.on_query_contract
+        )
+
+    def on_query_contract(self, data: dict, request: Request):
+        """"""
+        if self.check_error("查询合约", data):
+            return
+
+        for d in data["result"]:
+            print(d)
+            # self.gateway.on_contract(contract)
+
+        self.logger.info("合约信息查询成功")
+
+    def check_error(self, name: str, data: dict):
+        """"""
+        if data["ret_code"]:
+            error_code = data["ret_code"]
+            error_msg = data["ret_msg"]
+            msg = f"{name}失败，错误代码：{error_code}，信息：{error_msg}"
+            self.logger.info(msg)
+            return True
+
+        return False
+
+    def add_request(
+            self,
+            method: str,
+            path: str,
+            callback: CALLBACK_TYPE,
+            params: dict = None,
+            data: Union[dict, str, bytes] = None,
+            headers: dict = None,
+            on_failed: ON_FAILED_TYPE = None,
+            on_error: ON_ERROR_TYPE = None,
+            extra: Any = None,
+    ):
+        """
+        Add a new request.
+        :param method: GET, POST, PUT, DELETE, QUERY
+        :param path:
+        :param callback: callback function if 2xx status, type: (dict, Request)
+        :param params: dict for query string
+        :param data: Http body. If it is a dict, it will be converted to form-data. Otherwise, it will be converted to bytes.
+        :param headers: dict for headers
+        :param on_failed: callback function if Non-2xx status, type, type: (code, Request)
+        :param on_error: callback function when catching Python exception, type: (etype, evalue, tb, Request)
+        :param extra: Any extra data which can be used when handling callback
+        :return: Request
+        """
+        request = Request(
+            method=method,
+            path=path,
+            params=params,
+            data=data,
+            headers=headers,
+            callback=callback,
+            on_failed=on_failed,
+            on_error=on_error,
+            extra=extra,
+            client=self,
+        )
+        task = pool.apply_async(
+            self._process_request,
+            args=[request, ],
+            callback=self._clean_finished_tasks,
+            # error_callback=lambda e: self.on_error(type(e), e, e.__traceback__, request),
+        )
+        self._push_task(task)
+        return request
+
+    def _clean_finished_tasks(self, result: None):
+        with self._tasks_lock:
+            not_finished_tasks = [i for i in self._tasks if not i.ready()]
+            self._tasks = not_finished_tasks
+
+    def _push_task(self, task):
+        with self._tasks_lock:
+            self._tasks.append(task)
+
+    def _process_request(
+            self, request: Request
+    ):
+        """
+        Sending request to server and get result.
+        """
+        try:
+            with self._get_session() as session:
+                request = self.sign(request)
+                url = self.url_base + request.path
+
+                # send request
+                uid = uuid.uuid4()
+                stream = request.stream
+                method = request.method
+                headers = request.headers
+                params = request.params
+                data = request.data
+                self.logger.info("[%s] sending request %s %s, headers:%s, params:%s, data:%s",
+                                 uid, method, url,
+                                 headers, params, data)
+                response = session.request(
+                    method,
+                    url,
+                    headers=headers,
+                    params=params,
+                    data=data,
+                    stream=stream,
+                )
+                request.response = response
+                status_code = response.status_code
+
+                self.logger.info("[%s] received response from %s:%s", uid, method, url)
+
+                # check result & call corresponding callbacks
+                if not stream:  # normal API:
+                    # just call callback with all contents received.
+                    if status_code // 100 == 2:  # 2xx codes are all successful
+                        if status_code == 204:
+                            json_body = None
+                        else:
+                            json_body = response.json()
+                        self._process_json_body(json_body, request)
+                    else:
+                        if request.on_failed:
+                            request.status = RequestStatus.failed
+                            request.on_failed(status_code, request)
+                        else:
+                            self.on_failed(status_code, request)
+                else:  # streaming API:
+                    if request.on_connected:
+                        request.on_connected(request)
+                    # split response by lines, and call one callback for each line.
+                    for line in response.iter_lines(chunk_size=None):
+                        if line:
+                            request.processing_line = line
+                            json_body = json.loads(line)
+                            self._process_json_body(json_body, request)
+                    request.status = RequestStatus.success
+        except Exception:
+            request.status = RequestStatus.error
+            t, v, tb = sys.exc_info()
+            if request.on_error:
+                request.on_error(t, v, tb, request)
+            else:
+                self.on_error(t, v, tb, request)
+
+    def _get_session(self):
+        with self._sessions_lock:
+            if self._sessions:
+                return self.Session(self, self._sessions.pop())
+            else:
+                return self.Session(self, self._create_session())
 
 
 class WebsocketClient(object):
@@ -311,6 +464,7 @@ class WebsocketClient(object):
         if log_path is not None:
             self.logger = LogFactory.get_file_logger(log_path)
             self.logger.setLevel(logging.DEBUG)
+
 
 class LocalOrderManager:
     """
@@ -439,7 +593,6 @@ class LocalOrderManager:
 
         req = self.cancel_request_buf.pop(order_link_id)
         self.gateway.cancel_order(req)
-
 
 
 def generate_timestamp(expire_after: float = 30) -> int:
