@@ -13,6 +13,7 @@ import json
 import logging
 import socket
 import ssl
+import uuid
 import sys
 import hmac
 import hashlib
@@ -24,8 +25,6 @@ from typing import Optional
 
 from copy import copy
 from src.datatypes import OrderData, CancelRequest
-import uuid
-
 
 class RequestStatus(Enum):
     ready = 0  # Request created
@@ -161,6 +160,20 @@ class Request:
 
 
 class BybitRestApi:
+
+    class Session:
+
+        def __init__(self, client, session: requests.Session):
+            self.client = client
+            self.session = session
+
+        def __enter__(self):
+            return self.session
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            with self.client._sessions_lock:
+                self.client._sessions.append(self.session)
+
     def __init__(self, gateway: BybitGateway):
         """"""
         self.gateway = gateway
@@ -338,11 +351,12 @@ class BybitRestApi:
         """
         Sending request to server and get result.
         """
+        self.logger.info("_process_request")
         try:
             with self._get_session() as session:
                 request = self.sign(request)
                 url = self.url_base + request.path
-
+                self.logger.info("test")
                 # send request
                 uid = uuid.uuid4()
                 stream = request.stream
@@ -405,6 +419,69 @@ class BybitRestApi:
                 return self.Session(self, self._sessions.pop())
             else:
                 return self.Session(self, self._create_session())
+
+    def _create_session(self):
+        """"""
+        return requests.session()
+
+    def on_failed(self, status_code: int, request: Request):
+        """
+        Default on_failed handler for Non-2xx response.
+        """
+        sys.stderr.write(str(request))
+
+    def on_error(
+            self,
+            exception_type: type,
+            exception_value: Exception,
+            tb,
+            request: Optional[Request],
+    ):
+        """
+        Default on_error handler for Python exception.
+        """
+        sys.stderr.write(
+            self.exception_detail(exception_type, exception_value, tb, request)
+        )
+        sys.excepthook(exception_type, exception_value, tb)
+        self.logger.error("ErrorType: "+exception_type + " ErrorValue: "+ exception_value)
+
+    def exception_detail(
+        self,
+        exception_type: type,
+        exception_value: Exception,
+        tb,
+        request: Optional[Request],
+    ):
+        text = "[{}]: Unhandled RestClient Error:{}\n".format(
+            datetime.now().isoformat(), exception_type
+        )
+        text += "request:{}\n".format(request)
+        text += "Exception trace: \n"
+        text += "".join(
+            traceback.format_exception(exception_type, exception_value, tb)
+        )
+        return text
+
+    def _process_json_body(self, json_body: Optional[dict], request: "Request"):
+        status_code = request.response.status_code
+        if self.is_request_success(json_body, request):
+            request.status = RequestStatus.success
+            request.callback(json_body, request)
+        else:
+            request.status = RequestStatus.failed
+            if request.on_failed:
+                request.on_failed(status_code, request)
+            else:
+                self.on_failed(status_code, request)
+
+    def is_request_success(self, data: dict, request: "Request"):
+        """
+        check if a request succeed
+        default behavior is returning True
+        :return True if succeed.
+        """
+        return True
 
 
 class WebsocketClient(object):
