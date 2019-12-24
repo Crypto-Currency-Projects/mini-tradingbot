@@ -1,1 +1,1 @@
-try to build a mini trading bot with bybit REST and Websocket APIs
+Try to build a mini trading bot with bybit REST and Websocket APIs
