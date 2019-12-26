@@ -70,22 +70,22 @@ class BybitGateway(object):
         for s in self.strategy_map[tick.symbol]:
             s.on_tick(tick)
 
-    def send_order(self, req: OrderRequest):
-        """"""
-        return self.rest_api.send_order(req)
+    # def send_order(self, req: OrderRequest):
+    #     """"""
+    #     return self.rest_api.send_order(req)
 
     def cancel_order(self, req: CancelRequest):
         """"""
         self.rest_api.cancel_order(req)
 
-    def query_position(self):
-        """"""
-        self.rest_api.query_position()
+    # def query_position(self):
+    #     """"""
+    #     self.rest_api.query_position()
 
-    def close(self):
-        """"""
-        self.rest_api.stop()
-        self.ws_api.stop()
+    # def close(self):
+    #     """"""
+    #     self.rest_api.stop()
+    #     self.ws_api.stop()
 
 
 class Request:
@@ -268,8 +268,29 @@ class BybitRestApi:
             self.on_query_contract
         )
 
+    def cancel_order(self, req: CancelRequest):
+        """"""
+        sys_orderid = self.order_manager.get_order_link_id(req.order_id)
+        data = {
+            "order_id": sys_orderid,
+            "symbol": req.symbol,
+        }
+
+        self.add_request(
+            "POST",
+            path="/open-api/order/cancel",
+            data=data,
+            callback=self.on_cancel_order
+        )
+
+    def on_cancel_order(self, data: dict, request: Request):
+        """"""
+        if self.check_error("委托下单", data):
+            return
+
     def on_query_contract(self, data: dict, request: Request):
         """"""
+        print("on_query_contract")
         if self.check_error("查询合约", data):
             return
 
@@ -315,6 +336,7 @@ class BybitRestApi:
         :param extra: Any extra data which can be used when handling callback
         :return: Request
         """
+        print("debug")
         request = Request(
             method=method,
             path=path,
@@ -333,6 +355,7 @@ class BybitRestApi:
             callback=self._clean_finished_tasks,
             # error_callback=lambda e: self.on_error(type(e), e, e.__traceback__, request),
         )
+        print(1)
         self._push_task(task)
         return request
 
@@ -351,6 +374,7 @@ class BybitRestApi:
         """
         Sending request to server and get result.
         """
+        print(23)
         self.logger.info("_process_request")
         try:
             with self._get_session() as session:
@@ -579,7 +603,7 @@ class LocalOrderManager:
         Generate a new local orderid.
         """
         self.order_count += 1
-        order_link_id = self.order_prefix + str(self.order_count) + uuid.uuid4()
+        order_link_id = self.order_prefix + str(self.order_count) + str(uuid.uuid4())
         return order_link_id
 
     def get_order_link_id(self, order_id: str):
@@ -589,8 +613,8 @@ class LocalOrderManager:
         order_link_id = self.sys_local_orderid_map.get(order_id, "")
 
         if not order_link_id:
-            order_link_id = self.new_local_orderid()
-            self.update_orderid_map(order_link_id, order_id)
+            order_link_id = self.new_order_link_id()
+            self.update_order_id_map(order_link_id, order_id)
 
         return order_link_id
 
@@ -655,7 +679,7 @@ class LocalOrderManager:
     def cancel_order(self, req: CancelRequest):
         """
         """
-        order_link_id = self.get_sys_orderid(req.order_link_id)
+        order_link_id = self.get_order_link_id(req.order_link_id)
         if not order_link_id:
             self.cancel_request_buf[req.order_link_id] = req
             return
